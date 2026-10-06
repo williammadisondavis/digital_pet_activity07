@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 void main() {
@@ -13,10 +14,7 @@ class DigitalPetApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Digital Pet',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.blue,
-      ),
+      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
       home: const DigitalPetPage(),
     );
   }
@@ -30,9 +28,10 @@ class DigitalPetPage extends StatefulWidget {
 }
 
 class _DigitalPetPageState extends State<DigitalPetPage> {
-  // Controller used for changing the pet's name.
-  final TextEditingController _nameController =
-      TextEditingController(text: 'Pixel');
+  // Controller for changing the pet's name.
+  final TextEditingController _nameController = TextEditingController(
+    text: 'Pixel',
+  );
 
   // Main pet state.
   String _petName = 'Pixel';
@@ -44,28 +43,30 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
   bool _hasWon = false;
   bool _isPaused = false;
 
-  // Used for the small action bounce animation.
+  // Animation/reaction state.
   bool _isBouncing = false;
   int _bounceToken = 0;
+  String? _reaction;
 
-  // Timers owned by this State object.
+  // Timers.
   Timer? _hungerTimer;
   Timer? _highMoodTimer;
+  Timer? _reactionTimer;
 
   @override
   void initState() {
     super.initState();
 
-    // Start the hunger timer when the screen first starts.
+    // Start hunger timer when the app opens.
     _startHungerTimer();
   }
 
-  // Keeps meter values inside the required 0-100 range.
+  // Keeps all meter values between 0 and 100.
   int _clampMeter(int value) {
     return value.clamp(0, 100).toInt();
   }
 
-  // Happiness controls the mood label.
+  // Mood label based on happiness.
   String get _moodLabel {
     if (_happiness > 70) {
       return 'Happy';
@@ -76,7 +77,7 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
     }
   }
 
-  // Happiness also controls the pet color.
+  // Mood color based on happiness.
   Color get _moodColor {
     if (_happiness > 70) {
       return Colors.green;
@@ -87,11 +88,21 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
     }
   }
 
-  // A message is derived from the current state instead of
-  // being stored as another separate state variable.
+  // Slightly changes pet size depending on mood.
+  double get _moodScale {
+    if (_happiness > 70) {
+      return 1.06;
+    } else if (_happiness < 30) {
+      return 0.94;
+    }
+
+    return 1.0;
+  }
+
+  // Pet message is calculated from the current state.
   String get _petMessage {
     if (_gameOver) {
-      return 'I need some rest...';
+      return 'I need a rest...';
     }
 
     if (_hasWon) {
@@ -113,58 +124,46 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
     return "Hi, I'm $_petName!";
   }
 
-  // Slightly changes the pet's size based on mood.
-  double get _moodScale {
-    if (_happiness > 70) {
-      return 1.06;
-    } else if (_happiness < 30) {
-      return 0.94;
-    }
-
-    return 1.0;
-  }
-
+  // Starts the hunger timer.
   void _startHungerTimer() {
-    // Prevent more than one hunger timer from existing.
+    // Cancel an old timer first so two timers cannot run.
     _hungerTimer?.cancel();
 
     if (_gameOver || _hasWon || _isPaused) {
       return;
     }
 
-    _hungerTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
+    _hungerTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (_gameOver || _hasWon) {
+        timer.cancel();
+        return;
+      }
+
+      if (_isPaused) {
+        return;
+      }
+
+      setState(() {
+        // Moving from 95 to 100 does not decrease happiness.
+        // The next timer tick while already at 100 does.
+        if (_hunger + 5 > 100) {
+          _hunger = 100;
+          _happiness = _clampMeter(_happiness - 20);
+        } else {
+          _hunger = _clampMeter(_hunger + 5);
         }
+      });
 
-        if (_gameOver || _hasWon) {
-          timer.cancel();
-          return;
-        }
-
-        if (_isPaused) {
-          return;
-        }
-
-        setState(() {
-          // The assignment specifies that 95 -> 100 should not
-          // cause the happiness penalty yet.
-          if (_hunger + 5 > 100) {
-            _hunger = 100;
-            _happiness = _clampMeter(_happiness - 20);
-          } else {
-            _hunger = _clampMeter(_hunger + 5);
-          }
-        });
-
-        _updateOutcome();
-      },
-    );
+      _updateOutcome();
+    });
   }
 
+  // Checks whether the player has won or lost.
   void _updateOutcome() {
     if (_gameOver || _hasWon || _isPaused) {
       return;
@@ -184,35 +183,30 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
       return;
     }
 
-    // Happiness must stay STRICTLY above 80.
+    // Happiness has to stay strictly ABOVE 80.
     if (_happiness <= 80) {
       _highMoodTimer?.cancel();
       _highMoodTimer = null;
       return;
     }
 
-    // Only start the timer if one is not already running.
-    _highMoodTimer ??= Timer(
-      const Duration(minutes: 3),
-      () {
-        _highMoodTimer = null;
+    // Start the win timer only if one is not already running.
+    _highMoodTimer ??= Timer(const Duration(minutes: 3), () {
+      _highMoodTimer = null;
 
-        if (!mounted ||
-            _gameOver ||
-            _isPaused ||
-            _happiness <= 80) {
-          return;
-        }
+      if (!mounted || _gameOver || _isPaused || _happiness <= 80) {
+        return;
+      }
 
-        setState(() {
-          _hasWon = true;
-        });
+      setState(() {
+        _hasWon = true;
+      });
 
-        _hungerTimer?.cancel();
-      },
-    );
+      _hungerTimer?.cancel();
+    });
   }
 
+  // Feed button.
   void _feedPet() {
     if (_gameOver || _hasWon || _isPaused) {
       return;
@@ -220,22 +214,22 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
 
     final int nextHunger = _clampMeter(_hunger - 10);
 
-    // Feeding when the pet was already very full makes it less happy.
-    final int happinessChange =
-        nextHunger < 30 ? -20 : 10;
+    // Feeding when the pet is already very full lowers happiness.
+    final int happinessChange = nextHunger < 30 ? -20 : 10;
 
-    final int nextHappiness =
-        _clampMeter(_happiness + happinessChange);
+    final int nextHappiness = _clampMeter(_happiness + happinessChange);
 
     setState(() {
       _hunger = nextHunger;
       _happiness = nextHappiness;
     });
 
+    _showReaction('🍖');
     _triggerBounce();
     _updateOutcome();
   }
 
+  // Play button.
   void _playWithPet() {
     if (_gameOver || _hasWon || _isPaused) {
       return;
@@ -246,41 +240,59 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
       _hunger = _clampMeter(_hunger + 10);
     });
 
+    _showReaction('🎾');
     _triggerBounce();
     _updateOutcome();
   }
 
+  // Shows a short reaction emoji.
+  void _showReaction(String reaction) {
+    _reactionTimer?.cancel();
+
+    setState(() {
+      _reaction = reaction;
+    });
+
+    _reactionTimer = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _reaction = null;
+      });
+    });
+  }
+
+  // Small pet bounce after Feed or Play.
   void _triggerBounce() {
     _bounceToken++;
+
     final int currentToken = _bounceToken;
 
     setState(() {
       _isBouncing = true;
     });
 
-    Future.delayed(
-      const Duration(milliseconds: 220),
-      () {
-        if (!mounted || currentToken != _bounceToken) {
-          return;
-        }
+    Future.delayed(const Duration(milliseconds: 220), () {
+      if (!mounted || currentToken != _bounceToken) {
+        return;
+      }
 
-        setState(() {
-          _isBouncing = false;
-        });
-      },
-    );
+      setState(() {
+        _isBouncing = false;
+      });
+    });
   }
 
+  // Confirms the pet's new name.
   void _confirmName() {
     final String enteredName = _nameController.text.trim();
 
     if (enteredName.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter a pet name.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter a pet name.')));
 
       return;
     }
@@ -289,54 +301,52 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
       _petName = enteredName;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Your pet is now named $_petName!'),
-      ),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Your pet is now named $_petName!')));
   }
 
-  // Advanced feature #1: Session Controls.
+  // Advanced Feature #1:
+  // Pause and resume session controls.
   void _togglePause() {
     if (_gameOver || _hasWon) {
       return;
     }
 
     if (!_isPaused) {
-      // Pause the game and stop both timers.
       setState(() {
         _isPaused = true;
       });
 
       _hungerTimer?.cancel();
+
       _highMoodTimer?.cancel();
       _highMoodTimer = null;
     } else {
-      // Resume the game.
       setState(() {
         _isPaused = false;
       });
 
-      // Restart the hunger timer.
       _startHungerTimer();
-
-      // Recheck whether the 3-minute happiness timer
-      // should begin again.
       _updateOutcome();
     }
   }
 
+  // Resets the entire game.
   void _resetGame() {
-    // Cancel existing timers first so duplicates cannot occur.
     _hungerTimer?.cancel();
     _highMoodTimer?.cancel();
+    _reactionTimer?.cancel();
 
     _highMoodTimer = null;
+    _reaction = null;
+
     _bounceToken++;
 
     setState(() {
       _happiness = 60;
       _hunger = 40;
+
       _gameOver = false;
       _hasWon = false;
       _isPaused = false;
@@ -346,30 +356,21 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
     _startHungerTimer();
   }
 
-  Widget _buildMeter(
-    String title,
-    int value,
-    bool reduceMotion,
-  ) {
+  // Creates one animated meter.
+  Widget _buildMeter(String title, int value, bool reduceMotion) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           '$title: $value / 100',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 6),
 
-        // Advanced visual polish:
-        // smoothly animate meter changes.
+        // Advanced Feature #2:
+        // Animated meter.
         TweenAnimationBuilder<double>(
-          tween: Tween<double>(
-            begin: 0,
-            end: value / 100,
-          ),
+          tween: Tween<double>(begin: 0, end: value / 100),
           duration: reduceMotion
               ? Duration.zero
               : const Duration(milliseconds: 400),
@@ -388,44 +389,38 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Accessibility requirement for reduced-motion users.
-    final bool reduceMotion =
-        MediaQuery.of(context).disableAnimations;
+    // Allows animations to be removed if the device
+    // has reduced-motion accessibility enabled.
+    final bool reduceMotion = MediaQuery.of(context).disableAnimations;
 
     double scale = _moodScale;
 
-    // Don't use the bounce movement when reduced motion is enabled.
     if (_isBouncing && !reduceMotion) {
       scale *= 1.08;
     }
 
-    final bool careDisabled =
-        _gameOver || _hasWon || _isPaused;
+    final bool careDisabled = _gameOver || _hasWon || _isPaused;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Digital Pet'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('My Digital Pet'), centerTitle: true),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 600,
-              ),
+              constraints: const BoxConstraints(maxWidth: 600),
               child: Column(
                 children: [
+                  // Pet name.
                   Text(
                     _petName,
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineMedium,
+                    style: Theme.of(context).textTheme.headlineMedium,
                   ),
 
                   const SizedBox(height: 10),
 
+                  // Mood is shown with text so color is not
+                  // the only mood indicator.
                   Text(
                     'Mood: $_moodLabel',
                     style: const TextStyle(
@@ -436,42 +431,55 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
 
                   const SizedBox(height: 20),
 
-                  // Mood color is not the only indicator because
-                  // the text label above also describes the mood.
-                  Semantics(
-                    label:
-                        '$_petName is currently $_moodLabel',
-                    child: AnimatedScale(
-                      scale: scale,
-                      duration: reduceMotion
-                          ? Duration.zero
-                          : const Duration(
-                              milliseconds: 180,
+                  // Pet image and reaction.
+                  Stack(
+                    alignment: Alignment.topCenter,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 25),
+                        child: Semantics(
+                          label: '$_petName is currently $_moodLabel',
+                          child: AnimatedScale(
+                            scale: scale,
+                            duration: reduceMotion
+                                ? Duration.zero
+                                : const Duration(milliseconds: 180),
+                            curve: Curves.easeOutBack,
+                            child: ColorFiltered(
+                              colorFilter: ColorFilter.mode(
+                                _moodColor,
+                                BlendMode.modulate,
+                              ),
+                              child: Image.asset(
+                                'assets/pet.png',
+                                height: 220,
+                                fit: BoxFit.contain,
+                              ),
                             ),
-                      curve: Curves.easeOutBack,
-                      child: ColorFiltered(
-                        colorFilter: ColorFilter.mode(
-                          _moodColor,
-                          BlendMode.modulate,
-                        ),
-                        child: Image.asset(
-                          'assets/pet.png',
-                          height: 220,
-                          fit: BoxFit.contain,
+                          ),
                         ),
                       ),
-                    ),
+
+                      AnimatedOpacity(
+                        opacity: _reaction == null ? 0 : 1,
+                        duration: reduceMotion
+                            ? Duration.zero
+                            : const Duration(milliseconds: 180),
+                        child: Text(
+                          _reaction ?? '',
+                          style: const TextStyle(fontSize: 40),
+                        ),
+                      ),
+                    ],
                   ),
 
                   const SizedBox(height: 16),
 
-                  // Derived speech message.
+                  // Pet speech.
                   AnimatedSwitcher(
                     duration: reduceMotion
                         ? Duration.zero
-                        : const Duration(
-                            milliseconds: 300,
-                          ),
+                        : const Duration(milliseconds: 300),
                     child: Text(
                       _petMessage,
                       key: ValueKey(_petMessage),
@@ -485,22 +493,17 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
 
                   const SizedBox(height: 25),
 
-                  _buildMeter(
-                    'Happiness',
-                    _happiness,
-                    reduceMotion,
-                  ),
+                  // Happiness meter.
+                  _buildMeter('Happiness', _happiness, reduceMotion),
 
                   const SizedBox(height: 20),
 
-                  _buildMeter(
-                    'Hunger',
-                    _hunger,
-                    reduceMotion,
-                  ),
+                  // Hunger meter.
+                  _buildMeter('Hunger', _hunger, reduceMotion),
 
                   const SizedBox(height: 28),
 
+                  // Pet name input.
                   TextField(
                     controller: _nameController,
                     decoration: const InputDecoration(
@@ -518,42 +521,30 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
 
                   const SizedBox(height: 25),
 
+                  // Main controls.
                   Wrap(
                     alignment: WrapAlignment.center,
                     spacing: 10,
                     runSpacing: 10,
                     children: [
                       ElevatedButton.icon(
-                        onPressed:
-                            careDisabled ? null : _feedPet,
-                        icon:
-                            const Icon(Icons.restaurant),
+                        onPressed: careDisabled ? null : _feedPet,
+                        icon: const Icon(Icons.restaurant),
                         label: const Text('Feed'),
                       ),
+
                       ElevatedButton.icon(
-                        onPressed: careDisabled
-                            ? null
-                            : _playWithPet,
-                        icon:
-                            const Icon(Icons.sports_tennis),
+                        onPressed: careDisabled ? null : _playWithPet,
+                        icon: const Icon(Icons.sports_tennis),
                         label: const Text('Play'),
                       ),
+
                       ElevatedButton.icon(
-                        onPressed:
-                            (_gameOver || _hasWon)
-                                ? null
-                                : _togglePause,
-                        icon: Icon(
-                          _isPaused
-                              ? Icons.play_arrow
-                              : Icons.pause,
-                        ),
-                        label: Text(
-                          _isPaused
-                              ? 'Resume'
-                              : 'Pause',
-                        ),
+                        onPressed: (_gameOver || _hasWon) ? null : _togglePause,
+                        icon: Icon(_isPaused ? Icons.play_arrow : Icons.pause),
+                        label: Text(_isPaused ? 'Resume' : 'Pause'),
                       ),
+
                       OutlinedButton.icon(
                         onPressed: _resetGame,
                         icon: const Icon(Icons.restart_alt),
@@ -564,6 +555,7 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
 
                   const SizedBox(height: 25),
 
+                  // Win message.
                   if (_hasWon)
                     const Card(
                       child: Padding(
@@ -579,6 +571,7 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
                       ),
                     ),
 
+                  // Game over message.
                   if (_gameOver)
                     const Card(
                       child: Padding(
@@ -604,9 +597,10 @@ class _DigitalPetPageState extends State<DigitalPetPage> {
 
   @override
   void dispose() {
-    // Always clean up owned resources.
+    // Clean up timers and controller when leaving the page.
     _hungerTimer?.cancel();
     _highMoodTimer?.cancel();
+    _reactionTimer?.cancel();
     _nameController.dispose();
 
     super.dispose();
